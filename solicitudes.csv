@@ -1,4 +1,0 @@
-id_solicitud,legajo,fecha_inicio,dias_solicitados,fecha_fin,estado,observacion
-SOL001,1030,10/07/2026,3,12/07/2026,Aprobada,Sin observaciones
-SOL002,1042,15/07/2026,5,19/07/2026,Pendiente,Requiere aprobacion del responsable
-SOL003,1025,20/07/2026,4,23/07/2026,Observada,Falta validacion de cobertura

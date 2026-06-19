@@ -1,6 +1,0 @@
-regla,condicion,resultado
-Validar colaborador,El legajo existe y estado = Activo,Puede iniciar solicitud
-Validar fecha,La fecha ingresada es futura y tiene formato DD/MM/AAAA,Puede avanzar
-Validar saldo,Dias solicitados <= dias disponibles,Puede avanzar
-Validar cobertura,Hay ausencia simultanea en la misma area o proyecto,Requiere aprobacion del responsable
-Validar errores,Se superan los intentos permitidos de carga,Derivar a Recursos Humanos
