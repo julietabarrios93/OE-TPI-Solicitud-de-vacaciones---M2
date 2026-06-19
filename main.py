@@ -1,263 +1,351 @@
-"""
-Simulador de chatbot para solicitud y validacion de vacaciones en M2.
-
-Trabajo Practico Integrador - Organizacion Empresarial
-Proceso: Solicitud y validacion de vacaciones del personal mediante chatbot.
-
-Ejecutar:
-    python main.py
-"""
-
-from __future__ import annotations
-
 import csv
-from dataclasses import dataclass
-from datetime import datetime, timedelta
-from pathlib import Path
+
+print("=== CHATBOT M2 - SOLICITUD DE VACACIONES ===")
+print("Hola, voy a ayudarte a cargar una solicitud de vacaciones.")
+print("")
 
 
-BASE_DIR = Path(__file__).resolve().parent
-DATA_DIR = BASE_DIR / "data"
-COLABORADORES_CSV = DATA_DIR / "colaboradores.csv"
-SOLICITUDES_CSV = DATA_DIR / "solicitudes.csv"
+# --------------------------------------------------
+# FUNCIONES PARA LEER ARCHIVOS CSV
+# --------------------------------------------------
 
+def leer_colaboradores():
+    colaboradores = []
 
-@dataclass
-class Colaborador:
-    legajo: str
-    nombre: str
-    area: str
-    proyecto_obra: str
-    estado: str
-    dias_disponibles: int
-    responsable: str
+    try:
+        with open("data/colaboradores.csv", "r", encoding="utf-8") as archivo:
+            lector = csv.DictReader(archivo)
 
+            for fila in lector:
+                try:
+                    fila["dias_disponibles"] = int(fila["dias_disponibles"])
+                    colaboradores.append(fila)
+                except ValueError:
+                    print("Error: hay un dato inválido en días disponibles.")
 
-@dataclass
-class Solicitud:
-    id_solicitud: str
-    legajo: str
-    fecha_inicio: datetime
-    dias_solicitados: int
-    fecha_fin: datetime
-    estado: str
-    observacion: str
+    except FileNotFoundError:
+        print("Error: no se encontró el archivo colaboradores.csv.")
 
-
-class EstadoBot:
-    INICIO = "INICIO"
-    ESPERANDO_LEGAJO = "ESPERANDO_LEGAJO"
-    VALIDANDO_COLABORADOR = "VALIDANDO_COLABORADOR"
-    ESPERANDO_FECHA = "ESPERANDO_FECHA"
-    ESPERANDO_DIAS = "ESPERANDO_DIAS"
-    VALIDANDO_SALDO = "VALIDANDO_SALDO"
-    VALIDANDO_COBERTURA = "VALIDANDO_COBERTURA"
-    PENDIENTE_APROBACION = "PENDIENTE_APROBACION"
-    APROBADA = "APROBADA"
-    RECHAZADA = "RECHAZADA"
-    OBSERVADA = "OBSERVADA"
-    DERIVADA_RRHH = "DERIVADA_RRHH"
-    FINALIZADA = "FINALIZADA"
-
-
-def cargar_colaboradores() -> dict[str, Colaborador]:
-    colaboradores = {}
-    with open(COLABORADORES_CSV, newline="", encoding="utf-8") as archivo:
-        lector = csv.DictReader(archivo)
-        for fila in lector:
-            colaboradores[fila["legajo"]] = Colaborador(
-                legajo=fila["legajo"],
-                nombre=fila["nombre"],
-                area=fila["area"],
-                proyecto_obra=fila["proyecto_obra"],
-                estado=fila["estado"],
-                dias_disponibles=int(fila["dias_disponibles"]),
-                responsable=fila["responsable"],
-            )
     return colaboradores
 
 
-def parsear_fecha(valor: str) -> datetime:
-    return datetime.strptime(valor.strip(), "%d/%m/%Y")
+def leer_vacaciones_aprobadas():
+    vacaciones_aprobadas = []
+
+    try:
+        with open("data/vacaciones_aprobadas.csv", "r", encoding="utf-8") as archivo:
+            lector = csv.DictReader(archivo)
+
+            for fila in lector:
+                try:
+                    fila["dias_solicitados"] = int(fila["dias_solicitados"])
+                    vacaciones_aprobadas.append(fila)
+                except ValueError:
+                    print("Error: hay un dato inválido en días solicitados.")
+
+    except FileNotFoundError:
+        print("Error: no se encontró el archivo vacaciones_aprobadas.csv.")
+
+    return vacaciones_aprobadas
 
 
-def formatear_fecha(fecha: datetime) -> str:
-    return fecha.strftime("%d/%m/%Y")
+# --------------------------------------------------
+# FUNCIONES DE VALIDACIÓN
+# --------------------------------------------------
 
+def buscar_colaborador(colaboradores, legajo):
+    for colaborador in colaboradores:
+        if colaborador["legajo"] == legajo:
+            return colaborador
 
-def cargar_solicitudes() -> list[Solicitud]:
-    solicitudes = []
-    if not SOLICITUDES_CSV.exists():
-        return solicitudes
-
-    with open(SOLICITUDES_CSV, newline="", encoding="utf-8") as archivo:
-        lector = csv.DictReader(archivo)
-        for fila in lector:
-            solicitudes.append(
-                Solicitud(
-                    id_solicitud=fila["id_solicitud"],
-                    legajo=fila["legajo"],
-                    fecha_inicio=parsear_fecha(fila["fecha_inicio"]),
-                    dias_solicitados=int(fila["dias_solicitados"]),
-                    fecha_fin=parsear_fecha(fila["fecha_fin"]),
-                    estado=fila["estado"],
-                    observacion=fila["observacion"],
-                )
-            )
-    return solicitudes
-
-
-def pedir_fecha(mensaje: str, max_intentos: int = 2) -> datetime | None:
-    for _ in range(max_intentos):
-        valor = input(mensaje).strip()
-        try:
-            fecha = parsear_fecha(valor)
-            if fecha.date() <= datetime.today().date():
-                print("Bot: La fecha debe ser posterior a la fecha actual.")
-                continue
-            return fecha
-        except ValueError:
-            print("Bot: La fecha ingresada no es valida. Usa el formato DD/MM/AAAA.")
     return None
 
 
-def pedir_entero(mensaje: str, max_intentos: int = 2) -> int | None:
-    for _ in range(max_intentos):
-        valor = input(mensaje).strip()
-        if valor.isdigit() and int(valor) > 0:
-            return int(valor)
-        print("Bot: Debes ingresar un numero entero mayor a cero.")
-    return None
+def fecha_valida(fecha):
+    try:
+        partes = fecha.split("/")
+
+        if len(partes) != 3:
+            return False
+
+        dia = int(partes[0])
+        mes = int(partes[1])
+        anio = int(partes[2])
+
+        if dia < 1 or dia > 31:
+            return False
+
+        if mes < 1 or mes > 12:
+            return False
+
+        if anio < 2026:
+            return False
+
+        return True
+
+    except ValueError:
+        return False
 
 
-def calcular_fecha_fin(fecha_inicio: datetime, dias: int) -> datetime:
-    return fecha_inicio + timedelta(days=dias - 1)
+def pedir_dias():
+    try:
+        dias = int(input("Bot: Ingresá la cantidad de días solicitados: "))
+
+        if dias <= 0:
+            return None
+
+        return dias
+
+    except ValueError:
+        return None
 
 
-def intervalos_se_superponen(inicio_a: datetime, fin_a: datetime, inicio_b: datetime, fin_b: datetime) -> bool:
-    return inicio_a <= fin_b and inicio_b <= fin_a
+def hay_superposicion(vacaciones_aprobadas, colaboradores, colaborador_actual, fecha_inicio):
+    for vacacion in vacaciones_aprobadas:
 
+        if vacacion["fecha_inicio"] == fecha_inicio:
+            colaborador_ausente = buscar_colaborador(colaboradores, vacacion["legajo"])
 
-def existe_conflicto_cobertura(colaborador: Colaborador, fecha_inicio: datetime, fecha_fin: datetime, colaboradores: dict[str, Colaborador], solicitudes: list[Solicitud]) -> bool:
-    estados_a_considerar = {"Aprobada", "Pendiente"}
-    for solicitud in solicitudes:
-        if solicitud.estado not in estados_a_considerar:
-            continue
-        colaborador_solicitud = colaboradores.get(solicitud.legajo)
-        if not colaborador_solicitud:
-            continue
-        misma_area = colaborador_solicitud.area == colaborador.area
-        mismo_proyecto = colaborador_solicitud.proyecto_obra == colaborador.proyecto_obra
-        if (misma_area or mismo_proyecto) and intervalos_se_superponen(fecha_inicio, fecha_fin, solicitud.fecha_inicio, solicitud.fecha_fin):
-            return True
+            if colaborador_ausente is not None:
+                misma_area = colaborador_ausente["area"] == colaborador_actual["area"]
+                mismo_proyecto = colaborador_ausente["proyecto_obra"] == colaborador_actual["proyecto_obra"]
+
+                if misma_area or mismo_proyecto:
+                    return True
+
     return False
 
 
-def generar_id_solicitud(solicitudes: list[Solicitud]) -> str:
-    numeros = []
-    for solicitud in solicitudes:
-        codigo = solicitud.id_solicitud.replace("SOL", "")
-        if codigo.isdigit():
-            numeros.append(int(codigo))
-    return f"SOL{max(numeros, default=0) + 1:03d}"
+def generar_id_solicitud(vacaciones_aprobadas):
+    numero = len(vacaciones_aprobadas) + 1
+    return "SOL" + str(numero).zfill(3)
 
 
-def guardar_solicitud(id_solicitud: str, legajo: str, fecha_inicio: datetime, dias_solicitados: int, fecha_fin: datetime, estado: str, observacion: str) -> None:
-    archivo_existe = SOLICITUDES_CSV.exists()
-    with open(SOLICITUDES_CSV, "a", newline="", encoding="utf-8") as archivo:
-        campos = ["id_solicitud", "legajo", "fecha_inicio", "dias_solicitados", "fecha_fin", "estado", "observacion"]
-        escritor = csv.DictWriter(archivo, fieldnames=campos)
-        if not archivo_existe:
+# --------------------------------------------------
+# FUNCIONES PARA ACTUALIZAR BASES DE DATOS
+# --------------------------------------------------
+
+def guardar_vacacion_aprobada(nueva_vacacion):
+    try:
+        with open("data/vacaciones_aprobadas.csv", "a", encoding="utf-8", newline="") as archivo:
+            campos = [
+                "id_solicitud",
+                "legajo",
+                "fecha_inicio",
+                "dias_solicitados",
+                "fecha_fin",
+                "estado",
+                "observacion"
+            ]
+
+            escritor = csv.DictWriter(archivo, fieldnames=campos)
+            escritor.writerow(nueva_vacacion)
+
+    except FileNotFoundError:
+        print("Error: no se pudo actualizar la base de vacaciones aprobadas.")
+
+
+def actualizar_dias_disponibles(colaboradores, legajo, dias_solicitados):
+    try:
+        for colaborador in colaboradores:
+            if colaborador["legajo"] == legajo:
+                colaborador["dias_disponibles"] = colaborador["dias_disponibles"] - dias_solicitados
+
+        with open("data/colaboradores.csv", "w", encoding="utf-8", newline="") as archivo:
+            campos = [
+                "legajo",
+                "nombre",
+                "area",
+                "proyecto_obra",
+                "estado",
+                "dias_disponibles",
+                "responsable"
+            ]
+
+            escritor = csv.DictWriter(archivo, fieldnames=campos)
             escritor.writeheader()
-        escritor.writerow({
-            "id_solicitud": id_solicitud,
-            "legajo": legajo,
-            "fecha_inicio": formatear_fecha(fecha_inicio),
-            "dias_solicitados": dias_solicitados,
-            "fecha_fin": formatear_fecha(fecha_fin),
-            "estado": estado,
-            "observacion": observacion,
-        })
+            escritor.writerows(colaboradores)
+
+    except FileNotFoundError:
+        print("Error: no se pudo actualizar la base de colaboradores.")
 
 
-def simular_chatbot() -> None:
-    print("\n=== Chatbot M2 - Solicitud de vacaciones ===")
-    print("Bot: Hola. Voy a ayudarte a registrar una solicitud de vacaciones.")
+# --------------------------------------------------
+# PROGRAMA PRINCIPAL
+# --------------------------------------------------
 
-    colaboradores = cargar_colaboradores()
-    solicitudes = cargar_solicitudes()
+colaboradores = leer_colaboradores()
+vacaciones_aprobadas = leer_vacaciones_aprobadas()
 
-    legajo = input("Bot: Ingresa tu numero de legajo: ").strip()
-    colaborador = colaboradores.get(legajo)
+estado_bot = "INICIO"
 
-    if not colaborador:
-        estado = EstadoBot.RECHAZADA
-        print("Bot: No encontre ese legajo en la base. La solicitud queda rechazada.")
-        print(f"Estado final: {estado}")
-        return
 
-    if colaborador.estado != "Activo":
-        estado = EstadoBot.RECHAZADA
-        print("Bot: El colaborador no se encuentra activo. No puede iniciar una solicitud.")
-        print(f"Estado final: {estado}")
-        return
+# --------------------------------------------------
+# VALIDACIÓN DE LEGAJO
+# --------------------------------------------------
 
-    print(f"Bot: Hola {colaborador.nombre}. Area: {colaborador.area}. Dias disponibles: {colaborador.dias_disponibles}.")
+estado_bot = "ESPERANDO_LEGAJO"
+legajo_ingresado = input("Bot: Ingresá tu número de legajo: ")
 
-    fecha_inicio = pedir_fecha("Bot: Ingresa la fecha de inicio (DD/MM/AAAA): ")
-    if fecha_inicio is None:
-        estado = EstadoBot.DERIVADA_RRHH
-        print("Bot: No pude validar la fecha. Derivo la consulta a Recursos Humanos.")
-        print(f"Estado final: {estado}")
-        return
+estado_bot = "VALIDANDO_COLABORADOR"
+colaborador = buscar_colaborador(colaboradores, legajo_ingresado)
 
-    dias_solicitados = pedir_entero("Bot: Ingresa la cantidad de dias solicitados: ")
-    if dias_solicitados is None:
-        estado = EstadoBot.DERIVADA_RRHH
-        print("Bot: No pude validar la cantidad de dias. Derivo la consulta a Recursos Humanos.")
-        print(f"Estado final: {estado}")
-        return
 
-    if dias_solicitados > colaborador.dias_disponibles:
-        estado = EstadoBot.RECHAZADA
-        observacion = "Saldo insuficiente"
-        id_solicitud = generar_id_solicitud(solicitudes)
-        fecha_fin = calcular_fecha_fin(fecha_inicio, dias_solicitados)
-        guardar_solicitud(id_solicitud, legajo, fecha_inicio, dias_solicitados, fecha_fin, estado, observacion)
-        print(f"Bot: Solicitaste {dias_solicitados} dias y tenes {colaborador.dias_disponibles} disponibles.")
-        print(f"Bot: Solicitud {id_solicitud} registrada como {estado}.")
-        print(f"Estado final: {estado}")
-        return
+if colaborador is None:
+    estado_bot = "DERIVADA_RRHH"
 
-    fecha_fin = calcular_fecha_fin(fecha_inicio, dias_solicitados)
-    hay_conflicto = existe_conflicto_cobertura(colaborador, fecha_inicio, fecha_fin, colaboradores, solicitudes)
-    id_solicitud = generar_id_solicitud(solicitudes)
+    print("")
+    print("Bot: No encontré ese legajo en la base de datos.")
+    print("Bot: La consulta se deriva a Recursos Humanos.")
+    print("Bot: No se actualiza la base de vacaciones aprobadas.")
+    print("Estado final:", estado_bot)
 
-    if hay_conflicto:
-        print("Bot: Detecte una posible superposicion de ausencias en el area/proyecto.")
-        print("Bot: La solicitud requiere aprobacion del responsable.")
-        decision = input("Simulacion - El responsable aprueba la solicitud? (si/no): ").strip().lower()
-        if decision in {"si", "s"}:
-            estado = EstadoBot.APROBADA
-            observacion = "Aprobada por responsable ante conflicto de cobertura"
-        else:
-            estado = EstadoBot.RECHAZADA
-            observacion = "Rechazada por responsable por conflicto de cobertura"
+
+else:
+    # --------------------------------------------------
+    # VALIDACIÓN DE ESTADO DEL COLABORADOR
+    # --------------------------------------------------
+
+    if colaborador["estado"] != "Activo":
+        estado_bot = "DERIVADA_RRHH"
+
+        print("")
+        print("Bot: El colaborador no se encuentra activo.")
+        print("Bot: La consulta se deriva a Recursos Humanos.")
+        print("Bot: No se actualiza la base de vacaciones aprobadas.")
+        print("Estado final:", estado_bot)
+
+
     else:
-        estado = EstadoBot.APROBADA
-        observacion = "Sin conflicto de cobertura"
-
-    guardar_solicitud(id_solicitud, legajo, fecha_inicio, dias_solicitados, fecha_fin, estado, observacion)
-
-    print("\nBot: Resultado de la solicitud")
-    print(f"- ID: {id_solicitud}")
-    print(f"- Colaborador: {colaborador.nombre}")
-    print(f"- Fecha inicio: {formatear_fecha(fecha_inicio)}")
-    print(f"- Fecha fin: {formatear_fecha(fecha_fin)}")
-    print(f"- Dias solicitados: {dias_solicitados}")
-    print(f"- Estado final: {estado}")
-    print(f"- Observacion: {observacion}")
+        print("")
+        print("Bot: Hola", colaborador["nombre"])
+        print("Bot: Área:", colaborador["area"])
+        print("Bot: Proyecto/Obra:", colaborador["proyecto_obra"])
+        print("Bot: Días disponibles:", colaborador["dias_disponibles"])
 
 
-if __name__ == "__main__":
-    simular_chatbot()
+        # --------------------------------------------------
+        # VALIDACIÓN DE FECHA
+        # --------------------------------------------------
+
+        estado_bot = "ESPERANDO_FECHA"
+        fecha_inicio = input("Bot: Ingresá la fecha de inicio (DD/MM/AAAA): ")
+
+        if not fecha_valida(fecha_inicio):
+            estado_bot = "RECHAZADA"
+
+            print("")
+            print("Bot: La fecha ingresada no es válida.")
+            print("Bot: La solicitud queda rechazada.")
+            print("Bot: No se actualiza la base de vacaciones aprobadas.")
+            print("Estado final:", estado_bot)
+
+
+        else:
+            # --------------------------------------------------
+            # VALIDACIÓN DE CANTIDAD DE DÍAS
+            # --------------------------------------------------
+
+            estado_bot = "ESPERANDO_DIAS"
+            dias_solicitados = pedir_dias()
+
+            if dias_solicitados is None:
+                estado_bot = "RECHAZADA"
+
+                print("")
+                print("Bot: La cantidad de días debe ser un número mayor a cero.")
+                print("Bot: La solicitud queda rechazada.")
+                print("Bot: No se actualiza la base de vacaciones aprobadas.")
+                print("Estado final:", estado_bot)
+
+
+            else:
+                # --------------------------------------------------
+                # VALIDACIÓN DE SALDO
+                # --------------------------------------------------
+
+                estado_bot = "VALIDANDO_SALDO"
+
+                if dias_solicitados > colaborador["dias_disponibles"]:
+                    estado_bot = "RECHAZADA"
+
+                    print("")
+                    print("Bot: No tenés saldo suficiente.")
+                    print("Bot: Solicitaste", dias_solicitados, "días.")
+                    print("Bot: Tenés disponibles", colaborador["dias_disponibles"], "días.")
+                    print("Bot: La solicitud queda rechazada.")
+                    print("Bot: No se actualiza la base de vacaciones aprobadas.")
+                    print("Estado final:", estado_bot)
+
+
+                else:
+                    # --------------------------------------------------
+                    # VALIDACIÓN DE COBERTURA
+                    # --------------------------------------------------
+
+                    estado_bot = "VALIDANDO_COBERTURA"
+
+                    conflicto = hay_superposicion(
+                        vacaciones_aprobadas,
+                        colaboradores,
+                        colaborador,
+                        fecha_inicio
+                    )
+
+                    if conflicto:
+                        estado_bot = "PENDIENTE_APROBACION"
+
+                        print("")
+                        print("Bot: Existe una posible superposición de cobertura.")
+                        print("Bot: La solicitud requiere aprobación del responsable.")
+                        print("Responsable:", colaborador["responsable"])
+
+                        respuesta = input("Simulación: ¿El responsable aprueba la excepción? (si/no): ")
+
+                        if respuesta.lower() == "si":
+                            estado_bot = "APROBADA"
+                            observacion = "Aprobada por excepción de cobertura"
+                        else:
+                            estado_bot = "RECHAZADA"
+
+                            print("")
+                            print("Bot: El responsable rechazó la excepción de cobertura.")
+                            print("Bot: La solicitud queda rechazada.")
+                            print("Bot: No se actualiza la base de vacaciones aprobadas.")
+                            print("Estado final:", estado_bot)
+
+                    else:
+                        estado_bot = "APROBADA"
+                        observacion = "Sin conflicto de cobertura"
+
+
+                    # --------------------------------------------------
+                    # REGISTRO SOLO SI LA SOLICITUD FUE APROBADA
+                    # --------------------------------------------------
+
+                    if estado_bot == "APROBADA":
+
+                        nueva_vacacion = {
+                            "id_solicitud": generar_id_solicitud(vacaciones_aprobadas),
+                            "legajo": legajo_ingresado,
+                            "fecha_inicio": fecha_inicio,
+                            "dias_solicitados": dias_solicitados,
+                            "fecha_fin": "No calculada",
+                            "estado": estado_bot,
+                            "observacion": observacion
+                        }
+
+                        guardar_vacacion_aprobada(nueva_vacacion)
+                        actualizar_dias_disponibles(colaboradores, legajo_ingresado, dias_solicitados)
+
+                        print("")
+                        print("=== RESUMEN DE LA SOLICITUD ===")
+                        print("Colaborador:", colaborador["nombre"])
+                        print("Área:", colaborador["area"])
+                        print("Proyecto/Obra:", colaborador["proyecto_obra"])
+                        print("Fecha de inicio:", fecha_inicio)
+                        print("Días solicitados:", dias_solicitados)
+                        print("Estado final:", estado_bot)
+                        print("Observación:", observacion)
+                        print("Bot: La vacación aprobada fue registrada en la base de datos.")
+                        print("Bot: También se actualizó el saldo de días disponibles del colaborador.")
