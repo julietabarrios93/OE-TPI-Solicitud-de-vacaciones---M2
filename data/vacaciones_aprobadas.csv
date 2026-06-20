@@ -1,0 +1,5 @@
+id_solicitud,legajo,fecha_inicio,dias_solicitados,fecha_fin,estado,observacion
+SOL001,1030,10/07/2026,3,No calculada,APROBADA,Sin observaciones
+SOL002,1042,15/07/2026,5,No calculada,APROBADA,Aprobada previamente
+SOL003,1025,20/06/2026,6,No calculada,APROBADA,Sin conflicto de cobertura
+SOL004,1025,20/06/2026,6,No calculada,APROBADA,Aprobada por excepción de cobertura
